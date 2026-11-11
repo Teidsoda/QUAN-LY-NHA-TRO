@@ -1461,6 +1461,38 @@ function doPost(e) {
         this.state.tenantContract = null;
         this.save();
         this.notify('sample-loaded');
+      },
+
+      loadState(data) {
+        if (!data || typeof data !== 'object') return;
+        const stateObj = (data.state && typeof data.state === 'object') ? data.state : data;
+        const currentWebhookUrl = localStorage.getItem('google_sync_webhook_url');
+        const currentGeminiKey = localStorage.getItem('gemini_api_key');
+
+        if (Array.isArray(stateObj.properties) && stateObj.properties.length > 0) {
+          this.state.properties = stateObj.properties;
+        }
+        if (stateObj.activePropertyId) {
+          this.state.activePropertyId = stateObj.activePropertyId;
+        }
+        if (stateObj.settings) {
+          this.state.settings = stateObj.settings;
+          if (currentWebhookUrl) this.state.settings.googleSyncWebhookUrl = currentWebhookUrl;
+          if (currentGeminiKey && !this.state.settings.geminiApiKey) {
+            this.state.settings.geminiApiKey = currentGeminiKey;
+          }
+        }
+        if (stateObj.tenant) this.state.tenant = stateObj.tenant;
+        if (Array.isArray(stateObj.members)) this.state.members = stateObj.members;
+        if (Array.isArray(stateObj.history)) this.state.history = stateObj.history;
+        if (Array.isArray(stateObj.tenantHistory)) this.state.tenantHistory = stateObj.tenantHistory;
+        if (stateObj.contractTemplate) this.state.contractTemplate = stateObj.contractTemplate;
+        if (stateObj.tenantContract !== undefined) this.state.tenantContract = stateObj.tenantContract;
+        if (stateObj.activeBillMode) this.state.activeBillMode = stateObj.activeBillMode;
+        if (stateObj.activeCalc !== undefined) this.state.activeCalc = stateObj.activeCalc;
+
+        this.save();
+        this.notify('state-loaded', this.state);
       }
     };
     window.AppStore = AppStore;
@@ -2222,6 +2254,10 @@ function doPost(e) {
           return clean;
         },
 
+        updateStatusBadge(status, text = '') {
+          this.updateBadge(status, text);
+        },
+
         updateBadge(status, text = '') {
           this.lastStatus = status;
           const badgeDot = document.getElementById('cloud-sync-badge');
@@ -2267,160 +2303,89 @@ function doPost(e) {
           }, delay);
         },
 
-        async pullFromCloud({ silent = false } = {}) {
-          const url = this.getWebhookUrl();
-          if (!url) {
-            this.updateBadge('unconfigured');
-            if (!silent && typeof UIRenderer !== 'undefined') {
-              UIRenderer.showToast('Chưa cấu hình Google Sync Webhook URL!');
-            }
+        async pullFromCloud() {
+          const url = (localStorage.getItem('google_sync_webhook_url') || this.getWebhookUrl() || '').trim();
+          if (!url || !url.startsWith('http')) {
+            this.updateStatusBadge('unconfigured');
             return false;
           }
 
-          this.updateBadge('syncing', 'Đang tải...');
-          const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 9000);
-
           try {
+            this.updateStatusBadge('syncing');
             const res = await fetch(url, {
               method: 'GET',
-              headers: { 'Accept': 'application/json, text/plain, */*' },
+              mode: 'cors',
               redirect: 'follow',
-              signal: controller.signal
+              headers: { 'Accept': 'application/json' }
             });
-            clearTimeout(timeoutId);
-
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
-            const text = await res.text();
-            if (!text || text.trim() === '' || text.trim() === '{}') {
-              this.updateBadge('synced', 'Đám mây sẵn sàng');
-              this.pushToCloud({ silent: true });
+            const data = await res.json();
+            if (data && typeof data === 'object' && Object.keys(data).length > 0) {
+              // Cập nhật AppStore & Render UI
+              if (typeof AppStore !== 'undefined' && AppStore.loadState) {
+                AppStore.loadState(data);
+              }
+              if (typeof UIRenderer !== 'undefined' && UIRenderer.renderAll) {
+                UIRenderer.renderAll();
+              }
+              this.updateStatusBadge('synced');
               return true;
             }
-
-            let data;
-            try {
-              data = JSON.parse(text);
-            } catch (e) {
-              throw new Error('Dữ liệu từ Webhook không phải JSON hợp lệ.');
-            }
-
-            let cloudState = null;
-            if (data && data.state && typeof data.state === 'object') {
-              cloudState = data.state;
-            } else if (data && (data.properties || data.settings || data.history)) {
-              cloudState = data;
-            }
-
-            if (cloudState) {
-              const currentWebhookUrl = this.getWebhookUrl();
-              const currentGeminiKey = localStorage.getItem('gemini_api_key');
-
-              if (Array.isArray(cloudState.properties) && cloudState.properties.length > 0) {
-                AppStore.state.properties = cloudState.properties;
-              }
-              if (cloudState.activePropertyId) {
-                AppStore.state.activePropertyId = cloudState.activePropertyId;
-              }
-              if (cloudState.settings) {
-                AppStore.state.settings = cloudState.settings;
-                if (currentWebhookUrl) AppStore.state.settings.googleSyncWebhookUrl = currentWebhookUrl;
-                if (currentGeminiKey && !AppStore.state.settings.geminiApiKey) {
-                  AppStore.state.settings.geminiApiKey = currentGeminiKey;
-                }
-              }
-              if (cloudState.tenant) AppStore.state.tenant = cloudState.tenant;
-              if (Array.isArray(cloudState.members)) AppStore.state.members = cloudState.members;
-              if (Array.isArray(cloudState.history)) AppStore.state.history = cloudState.history;
-              if (Array.isArray(cloudState.tenantHistory)) AppStore.state.tenantHistory = cloudState.tenantHistory;
-              if (cloudState.contractTemplate) AppStore.state.contractTemplate = cloudState.contractTemplate;
-              if (cloudState.tenantContract !== undefined) AppStore.state.tenantContract = cloudState.tenantContract;
-              if (cloudState.activeBillMode) AppStore.state.activeBillMode = cloudState.activeBillMode;
-              if (cloudState.activeCalc !== undefined) AppStore.state.activeCalc = cloudState.activeCalc;
-
-              AppStore.save();
-              if (typeof UIRenderer !== 'undefined') UIRenderer.renderAll();
-
-              const timeStr = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
-              this.updateBadge('synced', `Đã đồng bộ ${timeStr}`);
-              if (!silent && typeof UIRenderer !== 'undefined') {
-                UIRenderer.showToast('Đã đồng bộ dữ liệu mới nhất từ đám mây!');
-              }
-              return true;
-            } else {
-              this.updateBadge('synced', 'Đã kết nối');
-              return true;
-            }
+            this.updateStatusBadge('synced');
+            return true;
           } catch (err) {
-            clearTimeout(timeoutId);
-            console.error('[CloudSync] Pull error:', err);
-            this.updateBadge('error', 'Lỗi tải đám mây');
-            if (!silent && typeof UIRenderer !== 'undefined') {
-              UIRenderer.showToast('Không thể tải từ Google Sheets: ' + (err.message || 'Lỗi mạng'));
-            }
+            console.warn('Sync pull error:', err);
+            this.updateStatusBadge('error');
             return false;
           }
         },
 
-        async pushToCloud({ silent = true } = {}) {
-          const url = this.getWebhookUrl();
-          if (!url) {
-            this.updateBadge('unconfigured');
+        async pushToCloud(data) {
+          const url = (localStorage.getItem('google_sync_webhook_url') || this.getWebhookUrl() || '').trim();
+          if (!url || !url.startsWith('http')) {
+            this.updateStatusBadge('unconfigured');
             return false;
           }
 
-          this.updateBadge('syncing', 'Đang đồng bộ...');
-          const appData = {
-            action: 'save',
-            updatedAt: new Date().toISOString(),
-            state: AppStore.state
-          };
-
-          const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 9000);
+          const payload = (data && typeof data === 'object' && !('silent' in data))
+            ? data
+            : (typeof AppStore !== 'undefined' ? AppStore.state : data);
 
           try {
+            this.updateStatusBadge('syncing');
             await fetch(url, {
               method: 'POST',
               mode: 'no-cors',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(appData),
-              signal: controller.signal
+              headers: {
+                'Content-Type': 'text/plain;charset=utf-8'
+              },
+              body: JSON.stringify(payload)
             });
-            clearTimeout(timeoutId);
-            const timeStr = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
-            this.updateBadge('synced', `Đã đồng bộ ${timeStr}`);
-            if (!silent && typeof UIRenderer !== 'undefined') {
-              UIRenderer.showToast('Đã lưu dữ liệu lên đám mây Google Sheets!');
-            }
+            this.updateStatusBadge('synced');
             return true;
           } catch (err) {
-            clearTimeout(timeoutId);
-            console.error('[CloudSync] Push failed:', err);
-            this.updateBadge('error', 'Lỗi lưu đám mây');
-            if (!silent && typeof UIRenderer !== 'undefined') {
-              UIRenderer.showToast('Không thể gửi dữ liệu lên Google Sheets: ' + (err.message || 'Lỗi mạng'));
-            }
+            console.warn('Sync push error:', err);
+            this.updateStatusBadge('error');
             return false;
           }
         },
 
         async syncManual() {
-          const url = this.getWebhookUrl();
+          const url = (localStorage.getItem('google_sync_webhook_url') || this.getWebhookUrl() || '').trim();
           if (!url) return false;
-          return await this.pullFromCloud({ silent: false });
+          return await this.pullFromCloud();
         },
 
         init() {
-          const url = this.getWebhookUrl();
+          const url = (localStorage.getItem('google_sync_webhook_url') || this.getWebhookUrl() || '').trim();
           if (url) {
-            this.updateBadge('syncing', 'Đang kết nối...');
-            this.pullFromCloud({ silent: true }).catch(err => {
+            this.updateStatusBadge('syncing');
+            this.pullFromCloud().catch(err => {
               console.warn('[CloudSync] Initial auto-pull failed, running offline:', err);
-              this.updateBadge('error', 'Chưa kết nối');
+              this.updateStatusBadge('error');
             });
           } else {
-            this.updateBadge('unconfigured');
+            this.updateStatusBadge('unconfigured');
           }
         }
       }
