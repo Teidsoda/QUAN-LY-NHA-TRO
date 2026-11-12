@@ -2229,6 +2229,8 @@ function doPost(e) {
        */
       CloudSyncAdapter: {
         _debounceTimer: null,
+        _listenersAttached: false,
+        _lastPullTime: 0,
         lastStatus: 'unconfigured',
 
         getWebhookUrl() {
@@ -2303,7 +2305,10 @@ function doPost(e) {
           }, delay);
         },
 
-        async pullFromCloud() {
+        async pullFromCloud({ silent = false, minInterval = 0 } = {}) {
+          if (minInterval > 0 && this._lastPullTime && (Date.now() - this._lastPullTime < minInterval)) {
+            return false;
+          }
           const url = (localStorage.getItem('google_sync_webhook_url') || this.getWebhookUrl() || '').trim();
           if (!url || !url.startsWith('http')) {
             this.updateStatusBadge('unconfigured');
@@ -2311,31 +2316,41 @@ function doPost(e) {
           }
 
           try {
-            this.updateStatusBadge('syncing');
-            const res = await fetch(url, {
+            this.updateStatusBadge('syncing', 'Đang đồng bộ...');
+            const cleanUrl = url.trim();
+            const separator = cleanUrl.includes('?') ? '&' : '?';
+            const noCacheUrl = `${cleanUrl}${separator}t=${Date.now()}`;
+
+            const res = await fetch(noCacheUrl, {
               method: 'GET',
-              mode: 'cors',
+              cache: 'no-store',
               redirect: 'follow',
               headers: { 'Accept': 'application/json' }
             });
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
             const data = await res.json();
+            this._lastPullTime = Date.now();
             if (data && typeof data === 'object' && Object.keys(data).length > 0) {
-              // Cập nhật AppStore & Render UI
+              // Ghi đè cập nhật vào AppStore & localStorage
               if (typeof AppStore !== 'undefined' && AppStore.loadState) {
                 AppStore.loadState(data);
               }
+              // Cập nhật ngay lập tức giao diện, tên căn hộ, khách thuê, chỉ số điện/nước, lịch sử, mã VietQR
               if (typeof UIRenderer !== 'undefined' && UIRenderer.renderAll) {
                 UIRenderer.renderAll();
               }
-              this.updateStatusBadge('synced');
+              const timeStr = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+              this.updateStatusBadge('synced', `Đã đồng bộ ${timeStr}`);
+              if (!silent && typeof UIRenderer !== 'undefined' && UIRenderer.showToast) {
+                UIRenderer.showToast(`Đã đồng bộ dữ liệu mới nhất từ Google Sheets! (${timeStr})`);
+              }
               return true;
             }
             this.updateStatusBadge('synced');
             return true;
           } catch (err) {
             console.warn('Sync pull error:', err);
-            this.updateStatusBadge('error');
+            this.updateStatusBadge('error', 'Lỗi kết nối');
             return false;
           }
         },
@@ -2352,7 +2367,7 @@ function doPost(e) {
             : (typeof AppStore !== 'undefined' ? AppStore.state : data);
 
           try {
-            this.updateStatusBadge('syncing');
+            this.updateStatusBadge('syncing', 'Đang đồng bộ...');
             await fetch(url, {
               method: 'POST',
               mode: 'no-cors',
@@ -2361,11 +2376,12 @@ function doPost(e) {
               },
               body: JSON.stringify(payload)
             });
+            this._lastPullTime = Date.now();
             this.updateStatusBadge('synced');
             return true;
           } catch (err) {
             console.warn('Sync push error:', err);
-            this.updateStatusBadge('error');
+            this.updateStatusBadge('error', 'Lỗi kết nối');
             return false;
           }
         },
@@ -2376,13 +2392,38 @@ function doPost(e) {
           return await this.pullFromCloud();
         },
 
+        setupLifecycleListeners() {
+          if (this._listenersAttached) return;
+          if (typeof window === 'undefined' || typeof document === 'undefined') return;
+          this._listenersAttached = true;
+
+          // 1. Mobile bfcache restore (iOS Safari / Android Chrome)
+          window.addEventListener('pageshow', (event) => {
+            const url = (localStorage.getItem('google_sync_webhook_url') || this.getWebhookUrl() || '').trim();
+            if (url && (event.persisted || !this._lastPullTime)) {
+              this.pullFromCloud({ silent: true, minInterval: 10000 });
+            }
+          });
+
+          // 2. Mobile & desktop tab switch / return from another app
+          document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible') {
+              const url = (localStorage.getItem('google_sync_webhook_url') || this.getWebhookUrl() || '').trim();
+              if (url) {
+                this.pullFromCloud({ silent: true, minInterval: 10000 });
+              }
+            }
+          });
+        },
+
         init() {
+          this.setupLifecycleListeners();
           const url = (localStorage.getItem('google_sync_webhook_url') || this.getWebhookUrl() || '').trim();
           if (url) {
-            this.updateStatusBadge('syncing');
-            this.pullFromCloud().catch(err => {
+            this.updateStatusBadge('syncing', 'Đang đồng bộ...');
+            this.pullFromCloud({ silent: true }).catch(err => {
               console.warn('[CloudSync] Initial auto-pull failed, running offline:', err);
-              this.updateStatusBadge('error');
+              this.updateStatusBadge('error', 'Chưa kết nối');
             });
           } else {
             this.updateStatusBadge('unconfigured');
@@ -2458,7 +2499,33 @@ function doPost(e) {
         this.renderAll();
       },
 
+      populateCalculationInputs(data) {
+        if (!data || typeof data !== 'object') {
+          const t = AppStore.state.tenant || {};
+          const rentInput = document.getElementById('calc-rent-cost');
+          if (rentInput && (t.repRent || t.repDefaultRent)) {
+            rentInput.value = t.repRent || t.repDefaultRent;
+          }
+          return;
+        }
+        if (data.period && document.getElementById('calc-billing-period')) document.getElementById('calc-billing-period').value = data.period;
+        if (data.rentCost !== undefined && document.getElementById('calc-rent-cost')) document.getElementById('calc-rent-cost').value = data.rentCost;
+        if (data.otherFees !== undefined && document.getElementById('calc-other-cost')) document.getElementById('calc-other-cost').value = data.otherFees;
+        if (data.note !== undefined && document.getElementById('calc-invoice-note')) document.getElementById('calc-invoice-note').value = data.note;
+        if (data.elecTotalKwh !== undefined && document.getElementById('elec-total-kwh')) document.getElementById('elec-total-kwh').value = data.elecTotalKwh;
+        if (data.elecTotalAmount !== undefined && document.getElementById('elec-total-amount')) document.getElementById('elec-total-amount').value = data.elecTotalAmount;
+        if (data.elecLandlordOldMeter !== undefined && document.getElementById('elec-landlord-old-meter')) document.getElementById('elec-landlord-old-meter').value = data.elecLandlordOldMeter;
+        if (data.elecLandlordNewMeter !== undefined && document.getElementById('elec-landlord-new-meter')) document.getElementById('elec-landlord-new-meter').value = data.elecLandlordNewMeter;
+        if (data.waterTotalM3 !== undefined && document.getElementById('water-total-m3')) document.getElementById('water-total-m3').value = data.waterTotalM3;
+        if (data.waterTotalAmount !== undefined && document.getElementById('water-total-amount')) document.getElementById('water-total-amount').value = data.waterTotalAmount;
+        if (data.waterLandlordOldMeter !== undefined && document.getElementById('water-landlord-old-meter')) document.getElementById('water-landlord-old-meter').value = data.waterLandlordOldMeter;
+        if (data.waterLandlordNewMeter !== undefined && document.getElementById('water-landlord-new-meter')) document.getElementById('water-landlord-new-meter').value = data.waterLandlordNewMeter;
+      },
+
       renderAll() {
+        if (AppStore.state.activeCalc) {
+          this.populateCalculationInputs(AppStore.state.activeCalc);
+        }
         this.renderHeader();
         this.renderLandlordForm();
         this.renderTenantForm();
@@ -4117,22 +4184,26 @@ function doPost(e) {
       },
 
       async 'save-cloud-sync-url'() {
-        const inputEl = document.getElementById('input-sheets-webhook') || document.getElementById('input-cloud-sync-url');
-        const url = (inputEl?.value || '').trim();
-        if (!url) {
+        const input = document.getElementById('input-sheets-webhook') || document.getElementById('input-cloud-sync-url');
+        const cleanUrl = (input?.value || '').trim();
+        if (input) input.value = cleanUrl;
+
+        if (!cleanUrl) {
           localStorage.removeItem('google_sync_webhook_url');
           if (AppStore.state.settings) {
             AppStore.state.settings.googleSyncWebhookUrl = '';
             AppStore.save();
           }
-          CloudSyncAdapter.updateBadge('unconfigured');
+          CloudSyncAdapter.updateStatusBadge('unconfigured');
           UIRenderer.showToast('Đã xóa cấu hình Webhook URL.');
           return;
         }
-        CloudSyncAdapter.setWebhookUrl(url);
+
+        localStorage.setItem('google_sync_webhook_url', cleanUrl);
+        CloudSyncAdapter.setWebhookUrl(cleanUrl);
         UIRenderer.showToast('Đang kết nối và kiểm tra Google Sheets Webhook...');
         try {
-          const ok = await CloudSyncAdapter.pushToCloud({ silent: false });
+          const ok = await CloudSyncAdapter.pushToCloud();
           if (ok) {
             UIRenderer.showToast('Kết nối Google Sheets thành công! Đã lưu dữ liệu lên đám mây.');
           }
@@ -4142,6 +4213,16 @@ function doPost(e) {
       },
 
       'save-webhook'() {
+        const input = document.getElementById('input-sheets-webhook') || document.getElementById('input-cloud-sync-url');
+        if (input) {
+          const cleanUrl = input.value.trim();
+          input.value = cleanUrl;
+          if (cleanUrl) {
+            localStorage.setItem('google_sync_webhook_url', cleanUrl);
+          } else {
+            localStorage.removeItem('google_sync_webhook_url');
+          }
+        }
         return this['save-cloud-sync-url']();
       },
 
@@ -4654,7 +4735,18 @@ function doPost(e) {
         UIRenderer.showToast('Đã lưu Gemini API Key thành công!');
       });
 
-      const saveWebhookBtnHandler = () => {
+      const saveWebhookBtnHandler = (e) => {
+        if (e && typeof e.preventDefault === 'function') e.preventDefault();
+        const input = document.getElementById('input-sheets-webhook') || document.getElementById('input-cloud-sync-url');
+        if (input) {
+          const cleanUrl = input.value.trim();
+          input.value = cleanUrl;
+          if (cleanUrl) {
+            localStorage.setItem('google_sync_webhook_url', cleanUrl);
+          } else {
+            localStorage.removeItem('google_sync_webhook_url');
+          }
+        }
         AppActions['save-cloud-sync-url']();
       };
       document.getElementById('btn-save-webhook')?.addEventListener('click', saveWebhookBtnHandler);
@@ -4892,6 +4984,23 @@ function doPost(e) {
       document.getElementById('global-modal')?.addEventListener('click', (e) => {
         if (e.target.id === 'global-modal') {
           ModalManager.close();
+        }
+      });
+
+      // 7. Mobile Lifecycle & Background Resume Auto-Sync (iOS Safari & Android Chrome)
+      window.addEventListener('pageshow', (event) => {
+        const url = (localStorage.getItem('google_sync_webhook_url') || CloudSyncAdapter?.getWebhookUrl?.() || '').trim();
+        if (url && (event.persisted || !CloudSyncAdapter?._lastPullTime)) {
+          CloudSyncAdapter?.pullFromCloud?.({ silent: true, minInterval: 10000 });
+        }
+      });
+
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') {
+          const url = (localStorage.getItem('google_sync_webhook_url') || CloudSyncAdapter?.getWebhookUrl?.() || '').trim();
+          if (url) {
+            CloudSyncAdapter?.pullFromCloud?.({ silent: true, minInterval: 10000 });
+          }
         }
       });
     });
