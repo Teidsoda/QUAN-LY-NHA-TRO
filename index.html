@@ -669,14 +669,14 @@
             <h3 class="text-xs font-bold text-slate-800 uppercase tracking-wider">Cấu Hình Google Gemini Vision AI</h3>
             <p class="text-xs text-slate-500 mt-0.5">Tự động trích xuất sản lượng và tổng tiền từ hóa đơn điện / nước (Model: <span class="font-mono font-semibold text-indigo-600">gemini-3.8-flash</span>)</p>
           </div>
-          <span class="text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded border border-emerald-200">Chính xác 100%</span>
+          <span id="gemini-status-pill" class="text-[11px] font-semibold text-slate-600 bg-slate-100 px-2.5 py-1 rounded border border-slate-200">Chưa có API Key</span>
         </div>
 
         <div class="space-y-2">
           <label class="block text-xs font-medium text-slate-700">Google Gemini API Key *</label>
           <div class="flex items-center gap-2">
             <input type="password" id="input-gemini-key" placeholder="AIzaSy..." class="flex-1 text-xs border border-slate-200 rounded p-2 focus:ring-1 focus:ring-slate-900 focus:outline-hidden font-mono bg-white">
-            <button type="button" id="btn-save-key" data-action="save-gemini-key" class="px-4 py-2 text-xs font-semibold text-white bg-slate-900 rounded hover:bg-slate-800 transition-colors shrink-0 flex items-center gap-1.5 shadow-xs">
+            <button type="button" id="btn-save-key" data-action="save-gemini-key" class="px-4 py-2 text-xs font-semibold text-white bg-slate-900 rounded hover:bg-slate-800 transition-colors shrink-0 flex items-center gap-1.5 shadow-xs cursor-pointer">
               <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z"/></svg>
               <span>Lưu Key</span>
             </button>
@@ -710,8 +710,8 @@
             </button>
           </div>
 
-          <div class="flex items-center justify-between text-[11px] text-slate-500 pt-1">
-            <div class="flex items-center gap-2">
+          <div class="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500 pt-1">
+            <div class="flex flex-wrap items-center gap-2">
               <button type="button" data-action="pull-cloud-sync" class="px-2.5 py-1 text-slate-700 bg-slate-100 hover:bg-slate-200 rounded text-xs font-medium flex items-center gap-1 transition-colors cursor-pointer">
                 <svg class="w-3 h-3 text-slate-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"/></svg>
                 <span>Tải từ Cloud (GET)</span>
@@ -719,6 +719,10 @@
               <button type="button" data-action="push-cloud-sync" class="px-2.5 py-1 text-slate-700 bg-slate-100 hover:bg-slate-200 rounded text-xs font-medium flex items-center gap-1 transition-colors cursor-pointer">
                 <svg class="w-3 h-3 text-slate-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5"/></svg>
                 <span>Đẩy lên Cloud (POST)</span>
+              </button>
+              <button type="button" id="btn-copy-setup-link" data-action="copy-setup-link" class="px-2.5 py-1 text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer shadow-2xs" title="Tạo link cài đặt nhanh chứa Webhook và Gemini Key để mở trên điện thoại">
+                <svg class="w-3.5 h-3.5 text-indigo-600" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m13.35-.622 1.757-1.757a4.5 4.5 0 0 0-6.364-6.364l-4.5 4.5a4.5 4.5 0 0 0 1.242 7.244"/></svg>
+                <span>Copy Link Cài Đặt Nhanh (Cho Điện Thoại)</span>
               </button>
             </div>
             <button type="button" data-action="toggle-apps-script-guide" class="text-indigo-600 hover:underline font-semibold cursor-pointer">
@@ -906,13 +910,114 @@ function doPost(e) {
   <script type="module">
 
     /**
+     * MODULE 0: CredentialStore
+     * Safe persistent credential storage (dnme_webhook_url, dnme_gemini_key)
+     * with non-destructive fallback keys and 1-Click URL hash setup
+     */
+    const CredentialStore = {
+      KEYS: {
+        WEBHOOK: 'dnme_webhook_url',
+        WEBHOOK_LEGACY: 'google_sync_webhook_url',
+        GEMINI: 'dnme_gemini_key',
+        GEMINI_LEGACY: 'gemini_api_key',
+        GEMINI_V1: 'nhatro_gemini_api_key_v1'
+      },
+
+      getWebhookUrl() {
+        return (
+          localStorage.getItem(this.KEYS.WEBHOOK) ||
+          localStorage.getItem(this.KEYS.WEBHOOK_LEGACY) ||
+          ''
+        ).trim();
+      },
+
+      setWebhookUrl(url) {
+        const clean = (url || '').trim();
+        if (clean) {
+          localStorage.setItem(this.KEYS.WEBHOOK, clean);
+          localStorage.setItem(this.KEYS.WEBHOOK_LEGACY, clean);
+        } else {
+          localStorage.removeItem(this.KEYS.WEBHOOK);
+          localStorage.removeItem(this.KEYS.WEBHOOK_LEGACY);
+        }
+        return clean;
+      },
+
+      getGeminiKey() {
+        return (
+          localStorage.getItem(this.KEYS.GEMINI) ||
+          localStorage.getItem(this.KEYS.GEMINI_LEGACY) ||
+          localStorage.getItem(this.KEYS.GEMINI_V1) ||
+          ''
+        ).trim();
+      },
+
+      setGeminiKey(key) {
+        const clean = (key || '').trim();
+        if (clean) {
+          localStorage.setItem(this.KEYS.GEMINI, clean);
+          localStorage.setItem(this.KEYS.GEMINI_LEGACY, clean);
+          localStorage.setItem(this.KEYS.GEMINI_V1, clean);
+        } else {
+          localStorage.removeItem(this.KEYS.GEMINI);
+          localStorage.removeItem(this.KEYS.GEMINI_LEGACY);
+          localStorage.removeItem(this.KEYS.GEMINI_V1);
+        }
+        return clean;
+      },
+
+      generateSetupLink() {
+        const webhookUrl = this.getWebhookUrl();
+        const geminiKey = this.getGeminiKey();
+        const payload = {
+          webhookUrl,
+          geminiKey,
+          w: webhookUrl,
+          g: geminiKey,
+          timestamp: Date.now()
+        };
+        const encoded = btoa(encodeURIComponent(JSON.stringify(payload)));
+        const origin = (typeof window !== 'undefined' && window.location?.origin) || '';
+        const pathname = (typeof window !== 'undefined' && window.location?.pathname) || '';
+        return `${origin}${pathname}#setup=${encoded}`;
+      },
+
+      processUrlHashSetup() {
+        try {
+          if (typeof window === 'undefined' || !window.location) return false;
+          const hash = window.location.hash || '';
+          if (!hash.startsWith('#setup=')) return false;
+          const encoded = hash.slice(7);
+          if (!encoded) return false;
+          const jsonStr = decodeURIComponent(atob(encoded));
+          const data = JSON.parse(jsonStr);
+          if (data && typeof data === 'object') {
+            const webhook = (data.webhookUrl || data.w || '').trim();
+            const gemini = (data.geminiKey || data.g || '').trim();
+            if (webhook) this.setWebhookUrl(webhook);
+            if (gemini) this.setGeminiKey(gemini);
+            if (window.history && window.history.replaceState) {
+              window.history.replaceState(null, '', window.location.pathname + window.location.search);
+            }
+            return true;
+          }
+        } catch (e) {
+          console.warn('Failed to parse #setup hash credentials:', e);
+        }
+        return false;
+      }
+    };
+    window.CredentialStore = CredentialStore;
+
+    /**
      * CONFIGURATION CONSTANTS & DEFAULT TEMPLATES
      */
     const AppConfig = {
       STORAGE_KEYS: {
         PROPERTIES: 'nhatro_properties_v2',
         ACTIVE_PROP_ID: 'nhatro_active_property_id_v2',
-        GEMINI_KEY: 'nhatro_gemini_api_key_v1',
+        GEMINI_KEY: 'dnme_gemini_key',
+        GEMINI_KEY_LEGACY: 'gemini_api_key',
         LANDLORD: 'nhatro_landlord_profile_v1',
         TENANT: 'nhatro_tenant_profile_v1',
         MEMBERS: 'nhatro_tenant_members_v1',
@@ -921,7 +1026,8 @@ function doPost(e) {
         TENANT_HISTORY: 'nhatro_tenant_history_v1',
         CONTRACT_TEMPLATE: 'nhatro_contract_template_v1',
         TENANT_CONTRACT: 'nhatro_tenant_contract_v1',
-        GOOGLE_SYNC_URL: 'google_sync_webhook_url'
+        GOOGLE_SYNC_URL: 'dnme_webhook_url',
+        GOOGLE_SYNC_URL_LEGACY: 'google_sync_webhook_url'
       },
       INDEXED_DB: {
         NAME: 'NhaTroContractDB_v1',
@@ -1149,9 +1255,9 @@ function doPost(e) {
         try {
           let properties = this._getItem(AppConfig.STORAGE_KEYS.PROPERTIES, null);
           const legacyLandlord = this._getItem(AppConfig.STORAGE_KEYS.LANDLORD, AppConfig.SAMPLE_DATA.landlord);
-          const geminiKey = this._getItem(AppConfig.STORAGE_KEYS.GEMINI_KEY, '') || legacyLandlord?.geminiApiKey || '';
+          const geminiKey = CredentialStore.getGeminiKey() || legacyLandlord?.geminiApiKey || '';
           if (geminiKey && legacyLandlord) legacyLandlord.geminiApiKey = geminiKey;
-          const syncUrl = localStorage.getItem('google_sync_webhook_url') || legacyLandlord?.googleSyncWebhookUrl || '';
+          const syncUrl = CredentialStore.getWebhookUrl() || legacyLandlord?.googleSyncWebhookUrl || '';
           if (syncUrl && legacyLandlord && !legacyLandlord.googleSyncWebhookUrl) {
             legacyLandlord.googleSyncWebhookUrl = syncUrl;
           }
@@ -1250,6 +1356,7 @@ function doPost(e) {
           this._setItem(AppConfig.STORAGE_KEYS.PROPERTIES, this.state.properties);
           this._setItem(AppConfig.STORAGE_KEYS.ACTIVE_PROP_ID, this.state.activePropertyId);
           if (this.state.settings?.geminiApiKey) {
+            CredentialStore.setGeminiKey(this.state.settings.geminiApiKey);
             this._setItem(AppConfig.STORAGE_KEYS.GEMINI_KEY, this.state.settings.geminiApiKey);
           }
 
@@ -1268,7 +1375,7 @@ function doPost(e) {
             this._setItem(AppConfig.STORAGE_KEYS.ACTIVE_CALC, this.state.activeCalc);
           }
           if (this.state.settings?.googleSyncWebhookUrl) {
-            localStorage.setItem('google_sync_webhook_url', this.state.settings.googleSyncWebhookUrl);
+            CredentialStore.setWebhookUrl(this.state.settings.googleSyncWebhookUrl);
           }
           this._setItem('nhatro_active_bill_mode', this.state.activeBillMode);
           if (typeof CloudSyncAdapter !== 'undefined') {
@@ -1466,8 +1573,20 @@ function doPost(e) {
       loadState(data) {
         if (!data || typeof data !== 'object') return;
         const stateObj = (data.state && typeof data.state === 'object') ? data.state : data;
-        const currentWebhookUrl = localStorage.getItem('google_sync_webhook_url');
-        const currentGeminiKey = localStorage.getItem('gemini_api_key');
+        const localWebhookUrl = CredentialStore.getWebhookUrl();
+        const localGeminiKey = CredentialStore.getGeminiKey();
+
+        // 1. Check if cloud data contains a valid Gemini API Key
+        const cloudGeminiKey = (
+          stateObj.settings?.geminiApiKey ||
+          stateObj.geminiApiKey ||
+          data.geminiApiKey ||
+          ''
+        ).trim();
+
+        if (cloudGeminiKey) {
+          CredentialStore.setGeminiKey(cloudGeminiKey);
+        }
 
         if (Array.isArray(stateObj.properties) && stateObj.properties.length > 0) {
           this.state.properties = stateObj.properties;
@@ -1477,10 +1596,10 @@ function doPost(e) {
         }
         if (stateObj.settings) {
           this.state.settings = stateObj.settings;
-          if (currentWebhookUrl) this.state.settings.googleSyncWebhookUrl = currentWebhookUrl;
-          if (currentGeminiKey && !this.state.settings.geminiApiKey) {
-            this.state.settings.geminiApiKey = currentGeminiKey;
-          }
+          // Protect Webhook URL: NEVER let cloud overwrite local webhook with empty
+          this.state.settings.googleSyncWebhookUrl = localWebhookUrl || this.state.settings.googleSyncWebhookUrl;
+          // Protect Gemini Key: use cloud key if provided, else keep local key intact
+          this.state.settings.geminiApiKey = cloudGeminiKey || localGeminiKey;
         }
         if (stateObj.tenant) this.state.tenant = stateObj.tenant;
         if (Array.isArray(stateObj.members)) this.state.members = stateObj.members;
@@ -1778,7 +1897,14 @@ function doPost(e) {
       },
 
       async scanBill(file, type = 'elec') {
-        const apiKey = (localStorage.getItem('gemini_api_key') || (typeof AppStore !== 'undefined' ? AppStore.state.settings?.geminiApiKey : '') || localStorage.getItem('nhatro_gemini_api_key_v1') || '').trim();
+        const apiKey = (
+          (typeof CredentialStore !== 'undefined' ? CredentialStore.getGeminiKey() : '') ||
+          localStorage.getItem('dnme_gemini_key') ||
+          localStorage.getItem('gemini_api_key') ||
+          (typeof AppStore !== 'undefined' ? AppStore.state.settings?.geminiApiKey : '') ||
+          localStorage.getItem('nhatro_gemini_api_key_v1') ||
+          ''
+        ).trim();
         if (!apiKey || apiKey.length < 5) {
           throw new Error('Chưa cấu hình Google Gemini API Key trong Tab Hồ sơ chủ!');
         }
@@ -2234,7 +2360,11 @@ function doPost(e) {
         lastStatus: 'unconfigured',
 
         getWebhookUrl() {
+          if (typeof CredentialStore !== 'undefined') {
+            return CredentialStore.getWebhookUrl();
+          }
           return (
+            localStorage.getItem('dnme_webhook_url') ||
             localStorage.getItem('google_sync_webhook_url') ||
             (typeof AppStore !== 'undefined' ? AppStore.state.settings?.googleSyncWebhookUrl : '') ||
             ''
@@ -2243,10 +2373,16 @@ function doPost(e) {
 
         setWebhookUrl(url) {
           const clean = (url || '').trim();
-          if (clean) {
-            localStorage.setItem('google_sync_webhook_url', clean);
+          if (typeof CredentialStore !== 'undefined') {
+            CredentialStore.setWebhookUrl(clean);
           } else {
-            localStorage.removeItem('google_sync_webhook_url');
+            if (clean) {
+              localStorage.setItem('dnme_webhook_url', clean);
+              localStorage.setItem('google_sync_webhook_url', clean);
+            } else {
+              localStorage.removeItem('dnme_webhook_url');
+              localStorage.removeItem('google_sync_webhook_url');
+            }
           }
           if (typeof AppStore !== 'undefined' && AppStore.state.settings) {
             AppStore.state.settings.googleSyncWebhookUrl = clean;
@@ -2271,7 +2407,7 @@ function doPost(e) {
             if (badgeText) badgeText.textContent = text || 'Đã đồng bộ';
             if (pillEl) {
               pillEl.className = 'text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded border border-emerald-200';
-              pillEl.textContent = 'Đã kết nối Webhook';
+              pillEl.textContent = 'Đã lưu cấu hình';
             }
           } else if (status === 'syncing' || status === 'saving') {
             if (badgeDot) badgeDot.className = 'w-2.5 h-2.5 rounded-full border-2 border-amber-500 border-t-transparent animate-spin shrink-0';
@@ -2309,7 +2445,7 @@ function doPost(e) {
           if (minInterval > 0 && this._lastPullTime && (Date.now() - this._lastPullTime < minInterval)) {
             return false;
           }
-          const url = (localStorage.getItem('google_sync_webhook_url') || this.getWebhookUrl() || '').trim();
+          const url = this.getWebhookUrl();
           if (!url || !url.startsWith('http')) {
             this.updateStatusBadge('unconfigured');
             return false;
@@ -2331,6 +2467,11 @@ function doPost(e) {
             const data = await res.json();
             this._lastPullTime = Date.now();
             if (data && typeof data === 'object' && Object.keys(data).length > 0) {
+              // Extract Gemini API key from cloud if present
+              const cloudGeminiKey = (data.geminiApiKey || (data.settings && data.settings.geminiApiKey) || '').trim();
+              if (cloudGeminiKey && typeof CredentialStore !== 'undefined') {
+                CredentialStore.setGeminiKey(cloudGeminiKey);
+              }
               // Ghi đè cập nhật vào AppStore & localStorage
               if (typeof AppStore !== 'undefined' && AppStore.loadState) {
                 AppStore.loadState(data);
@@ -2356,15 +2497,32 @@ function doPost(e) {
         },
 
         async pushToCloud(data) {
-          const url = (localStorage.getItem('google_sync_webhook_url') || this.getWebhookUrl() || '').trim();
+          const url = this.getWebhookUrl();
           if (!url || !url.startsWith('http')) {
             this.updateStatusBadge('unconfigured');
             return false;
           }
 
-          const payload = (data && typeof data === 'object' && !('silent' in data))
+          const rawPayload = (data && typeof data === 'object' && !('silent' in data))
             ? data
             : (typeof AppStore !== 'undefined' ? AppStore.state : data);
+
+          // Bundle geminiApiKey into private sheet sync payload so it syncs across owner devices
+          const currentGeminiKey = (
+            (typeof CredentialStore !== 'undefined' ? CredentialStore.getGeminiKey() : '') ||
+            rawPayload?.geminiApiKey ||
+            rawPayload?.settings?.geminiApiKey ||
+            ''
+          ).trim();
+
+          const payload = {
+            ...rawPayload,
+            geminiApiKey: currentGeminiKey,
+            settings: {
+              ...(rawPayload?.settings || {}),
+              geminiApiKey: currentGeminiKey
+            }
+          };
 
           try {
             this.updateStatusBadge('syncing', 'Đang đồng bộ...');
@@ -2387,7 +2545,7 @@ function doPost(e) {
         },
 
         async syncManual() {
-          const url = (localStorage.getItem('google_sync_webhook_url') || this.getWebhookUrl() || '').trim();
+          const url = this.getWebhookUrl();
           if (!url) return false;
           return await this.pullFromCloud();
         },
@@ -2399,7 +2557,7 @@ function doPost(e) {
 
           // 1. Mobile bfcache restore (iOS Safari / Android Chrome)
           window.addEventListener('pageshow', (event) => {
-            const url = (localStorage.getItem('google_sync_webhook_url') || this.getWebhookUrl() || '').trim();
+            const url = this.getWebhookUrl();
             if (url && (event.persisted || !this._lastPullTime)) {
               this.pullFromCloud({ silent: true, minInterval: 10000 });
             }
@@ -2408,7 +2566,7 @@ function doPost(e) {
           // 2. Mobile & desktop tab switch / return from another app
           document.addEventListener('visibilitychange', () => {
             if (document.visibilityState === 'visible') {
-              const url = (localStorage.getItem('google_sync_webhook_url') || this.getWebhookUrl() || '').trim();
+              const url = this.getWebhookUrl();
               if (url) {
                 this.pullFromCloud({ silent: true, minInterval: 10000 });
               }
@@ -2418,7 +2576,7 @@ function doPost(e) {
 
         init() {
           this.setupLifecycleListeners();
-          const url = (localStorage.getItem('google_sync_webhook_url') || this.getWebhookUrl() || '').trim();
+          const url = this.getWebhookUrl();
           if (url) {
             this.updateStatusBadge('syncing', 'Đang đồng bộ...');
             this.pullFromCloud({ silent: true }).catch(err => {
@@ -2831,7 +2989,14 @@ function doPost(e) {
         document.getElementById('cfg-bank-account-no').value = p.bankAccountNo || '';
         document.getElementById('cfg-bank-account-name').value = p.bankAccountName || '';
         document.getElementById('cfg-invoice-footer').value = p.invoiceFooter || '';
-        const savedGeminiKey = localStorage.getItem('gemini_api_key') || p.geminiApiKey || localStorage.getItem('nhatro_gemini_api_key_v1') || '';
+        const savedGeminiKey = (
+          (typeof CredentialStore !== 'undefined' ? CredentialStore.getGeminiKey() : '') ||
+          localStorage.getItem('dnme_gemini_key') ||
+          localStorage.getItem('gemini_api_key') ||
+          p.geminiApiKey ||
+          localStorage.getItem('nhatro_gemini_api_key_v1') ||
+          ''
+        ).trim();
         const inputGemini = document.getElementById('input-gemini-key');
         if (inputGemini) {
           inputGemini.value = savedGeminiKey;
@@ -2840,10 +3005,37 @@ function doPost(e) {
         if (geminiInput) {
           geminiInput.value = savedGeminiKey;
         }
-        const savedSyncUrl = localStorage.getItem('google_sync_webhook_url') || p.googleSyncWebhookUrl || '';
+        const geminiPill = document.getElementById('gemini-status-pill');
+        if (geminiPill) {
+          if (savedGeminiKey) {
+            geminiPill.className = 'text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded border border-emerald-200';
+            geminiPill.textContent = 'Đã lưu cấu hình';
+          } else {
+            geminiPill.className = 'text-[11px] font-semibold text-slate-500 bg-slate-100 px-2.5 py-1 rounded border border-slate-200';
+            geminiPill.textContent = 'Chưa có Key';
+          }
+        }
+
+        const savedSyncUrl = (
+          (typeof CredentialStore !== 'undefined' ? CredentialStore.getWebhookUrl() : '') ||
+          localStorage.getItem('dnme_webhook_url') ||
+          localStorage.getItem('google_sync_webhook_url') ||
+          p.googleSyncWebhookUrl ||
+          ''
+        ).trim();
         const inputSyncUrl = document.getElementById('input-sheets-webhook') || document.getElementById('input-cloud-sync-url');
         if (inputSyncUrl) {
           inputSyncUrl.value = savedSyncUrl;
+        }
+        const syncPill = document.getElementById('sync-status-pill');
+        if (syncPill) {
+          if (savedSyncUrl) {
+            syncPill.className = 'text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded border border-emerald-200';
+            syncPill.textContent = 'Đã lưu cấu hình';
+          } else {
+            syncPill.className = 'text-[11px] font-semibold text-slate-500 bg-slate-100 px-2.5 py-1 rounded border border-slate-200';
+            syncPill.textContent = 'Chưa kết nối Webhook';
+          }
         }
         if (typeof CloudSyncAdapter !== 'undefined') {
           CloudSyncAdapter.updateBadge(savedSyncUrl ? (CloudSyncAdapter.lastStatus || 'synced') : 'unconfigured');
@@ -4156,15 +4348,50 @@ function doPost(e) {
 
       'save-gemini-key'() {
         const key = (document.getElementById('input-gemini-key')?.value || '').trim();
-        localStorage.setItem('gemini_api_key', key);
-        localStorage.setItem('nhatro_gemini_api_key_v1', key);
+        if (typeof CredentialStore !== 'undefined') {
+          CredentialStore.setGeminiKey(key);
+        } else {
+          localStorage.setItem('dnme_gemini_key', key);
+          localStorage.setItem('gemini_api_key', key);
+          localStorage.setItem('nhatro_gemini_api_key_v1', key);
+        }
         if (AppStore.state.settings) {
           AppStore.state.settings.geminiApiKey = key;
           AppStore.save();
         }
         const cfgInput = document.getElementById('cfg-gemini-api-key');
         if (cfgInput) cfgInput.value = key;
+        UIRenderer.renderLandlordForm();
         UIRenderer.showToast('Đã lưu Gemini API Key thành công!');
+        if (typeof CloudSyncAdapter !== 'undefined' && CloudSyncAdapter.getWebhookUrl()) {
+          CloudSyncAdapter.pushToCloud({ silent: true });
+        }
+      },
+
+      async 'copy-setup-link'() {
+        if (typeof CredentialStore === 'undefined') return;
+        const link = CredentialStore.generateSetupLink();
+        if (!link) {
+          UIRenderer.showToast('Vui lòng cấu hình Webhook URL hoặc Gemini API Key trước khi copy link!');
+          return;
+        }
+        try {
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            await navigator.clipboard.writeText(link);
+          } else {
+            const ta = document.createElement('textarea');
+            ta.value = link;
+            ta.style.position = 'fixed';
+            ta.style.opacity = '0';
+            document.body.appendChild(ta);
+            ta.select();
+            document.execCommand('copy');
+            document.body.removeChild(ta);
+          }
+          UIRenderer.showToast('Đã copy Link Cài Đặt Nhanh! Gửi qua Zalo/điện thoại để mở tự động.');
+        } catch (err) {
+          prompt('Copy link cài đặt bên dưới:', link);
+        }
       },
 
       'trigger-cloud-sync'() {
@@ -4188,19 +4415,31 @@ function doPost(e) {
         const cleanUrl = (input?.value || '').trim();
         if (input) input.value = cleanUrl;
 
+        if (typeof CredentialStore !== 'undefined') {
+          CredentialStore.setWebhookUrl(cleanUrl);
+        } else {
+          if (cleanUrl) {
+            localStorage.setItem('dnme_webhook_url', cleanUrl);
+            localStorage.setItem('google_sync_webhook_url', cleanUrl);
+          } else {
+            localStorage.removeItem('dnme_webhook_url');
+            localStorage.removeItem('google_sync_webhook_url');
+          }
+        }
+
         if (!cleanUrl) {
-          localStorage.removeItem('google_sync_webhook_url');
           if (AppStore.state.settings) {
             AppStore.state.settings.googleSyncWebhookUrl = '';
             AppStore.save();
           }
           CloudSyncAdapter.updateStatusBadge('unconfigured');
+          UIRenderer.renderLandlordForm();
           UIRenderer.showToast('Đã xóa cấu hình Webhook URL.');
           return;
         }
 
-        localStorage.setItem('google_sync_webhook_url', cleanUrl);
         CloudSyncAdapter.setWebhookUrl(cleanUrl);
+        UIRenderer.renderLandlordForm();
         UIRenderer.showToast('Đang kết nối và kiểm tra Google Sheets Webhook...');
         try {
           const ok = await CloudSyncAdapter.pushToCloud();
@@ -4217,10 +4456,16 @@ function doPost(e) {
         if (input) {
           const cleanUrl = input.value.trim();
           input.value = cleanUrl;
-          if (cleanUrl) {
-            localStorage.setItem('google_sync_webhook_url', cleanUrl);
+          if (typeof CredentialStore !== 'undefined') {
+            CredentialStore.setWebhookUrl(cleanUrl);
           } else {
-            localStorage.removeItem('google_sync_webhook_url');
+            if (cleanUrl) {
+              localStorage.setItem('dnme_webhook_url', cleanUrl);
+              localStorage.setItem('google_sync_webhook_url', cleanUrl);
+            } else {
+              localStorage.removeItem('dnme_webhook_url');
+              localStorage.removeItem('google_sync_webhook_url');
+            }
           }
         }
         return this['save-cloud-sync-url']();
@@ -4696,6 +4941,12 @@ function doPost(e) {
      * CENTRALIZED EVENT DISPATCHER & LIFECYCLE
      */
     document.addEventListener('DOMContentLoaded', () => {
+      // 0. Check & Process 1-Click Secure Setup Link (#setup=...)
+      let isQuickSetup = false;
+      if (typeof CredentialStore !== 'undefined') {
+        isQuickSetup = CredentialStore.processUrlHashSetup();
+      }
+
       // 1. Initialize State
       AppStore.load();
       UIRenderer.init();
@@ -4703,6 +4954,10 @@ function doPost(e) {
       // Cloud Sync on Startup (Auto-pull from Google Sheets)
       if (typeof CloudSyncAdapter !== 'undefined') {
         CloudSyncAdapter.init();
+        if (isQuickSetup) {
+          UIRenderer.showToast('Đã tự động kết nối cấu hình thành công!');
+          CloudSyncAdapter.pullFromCloud({ silent: false });
+        }
       }
 
       // 2. Global Event Delegation for all [data-action] buttons
@@ -4724,29 +4979,16 @@ function doPost(e) {
       });
 
       // 4. Form Submit Listeners
+      document.getElementById('btn-copy-setup-link')?.addEventListener('click', () => {
+        AppActions['copy-setup-link']();
+      });
+
       document.getElementById('btn-save-key')?.addEventListener('click', () => {
-        const key = (document.getElementById('input-gemini-key')?.value || '').trim();
-        localStorage.setItem('gemini_api_key', key);
-        localStorage.setItem('nhatro_gemini_api_key_v1', key);
-        if (AppStore.state.settings) {
-          AppStore.state.settings.geminiApiKey = key;
-          AppStore.save();
-        }
-        UIRenderer.showToast('Đã lưu Gemini API Key thành công!');
+        AppActions['save-gemini-key']();
       });
 
       const saveWebhookBtnHandler = (e) => {
         if (e && typeof e.preventDefault === 'function') e.preventDefault();
-        const input = document.getElementById('input-sheets-webhook') || document.getElementById('input-cloud-sync-url');
-        if (input) {
-          const cleanUrl = input.value.trim();
-          input.value = cleanUrl;
-          if (cleanUrl) {
-            localStorage.setItem('google_sync_webhook_url', cleanUrl);
-          } else {
-            localStorage.removeItem('google_sync_webhook_url');
-          }
-        }
         AppActions['save-cloud-sync-url']();
       };
       document.getElementById('btn-save-webhook')?.addEventListener('click', saveWebhookBtnHandler);
@@ -4756,6 +4998,23 @@ function doPost(e) {
         e.preventDefault();
         const geminiKey = (document.getElementById('input-gemini-key')?.value || document.getElementById('cfg-gemini-api-key')?.value || '').trim();
         const syncUrl = (document.getElementById('input-sheets-webhook')?.value || document.getElementById('input-cloud-sync-url')?.value || '').trim();
+        
+        if (typeof CredentialStore !== 'undefined') {
+          CredentialStore.setGeminiKey(geminiKey);
+          CredentialStore.setWebhookUrl(syncUrl);
+        } else {
+          localStorage.setItem('dnme_gemini_key', geminiKey);
+          localStorage.setItem('gemini_api_key', geminiKey);
+          localStorage.setItem('nhatro_gemini_api_key_v1', geminiKey);
+          if (syncUrl) {
+            localStorage.setItem('dnme_webhook_url', syncUrl);
+            localStorage.setItem('google_sync_webhook_url', syncUrl);
+          } else {
+            localStorage.removeItem('dnme_webhook_url');
+            localStorage.removeItem('google_sync_webhook_url');
+          }
+        }
+
         AppStore.setSettings({
           propertyName: document.getElementById('cfg-property-name').value.trim(),
           propertyAddress: document.getElementById('cfg-property-address').value.trim(),
@@ -4768,13 +5027,8 @@ function doPost(e) {
           geminiApiKey: geminiKey,
           googleSyncWebhookUrl: syncUrl
         });
-        localStorage.setItem('gemini_api_key', geminiKey);
-        localStorage.setItem('nhatro_gemini_api_key_v1', geminiKey);
-        if (syncUrl) {
-          localStorage.setItem('google_sync_webhook_url', syncUrl);
-        } else {
-          localStorage.removeItem('google_sync_webhook_url');
-        }
+
+        UIRenderer.renderLandlordForm();
         UIRenderer.renderHeader();
         UIRenderer.renderActiveBill();
         UIRenderer.showToast('Đã lưu hồ sơ chủ trọ & cài đặt thành công!');
